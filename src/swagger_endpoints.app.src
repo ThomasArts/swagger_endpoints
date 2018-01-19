@@ -1,0 +1,16 @@
+{application, swagger_endpoints,
+ [{description, "A rebar plugin to generate code for swagger endpoints"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    yamerl
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, ["Thomas Arts"]},
+  {licenses, ["MIT"]},
+  {links, []}
+ ]}.
