@@ -11,7 +11,7 @@ generate(FileName, Map, Options) ->
      "%% Do not manually change this code!\n\n",
      "-module("++Mod++").\n\n",
      "-export([operation/1, operations/0]).\n\n",
-     "operations(Id) ->\n  maps:get(Id, operations()).\n\n",
+     "operation(Id) ->\n  maps:get(Id, operations()).\n\n",
      "operations() ->\n  ", Body, "."
     ],
   ok = file:write_file(FileName, Code).
