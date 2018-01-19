@@ -18,7 +18,8 @@ init(State) ->
             {example, "rebar3 swagger_endpoints swagger.yaml"}, 
                                           % How to use the plugin
             {opts, [{swaggerfile, $f, "file", string, "filename of swagger.yaml file"},
-                    {outfile, $o, "out", string, "filename for generated code (e.g. endpoints.erl)"}
+                    {outfile, $o, "out", string, "filename for generated code (e.g. endpoints.erl)"},
+                    {id_type, $t, "idtype", atom, "type of generated id (atom | binary | string)"}
                    ]},                    % list of options understood by the plugin
             {short_desc, "Generate endpoints code from swagger"},
             {desc, "A rebar plugin to generate code to access swagger defined endpoints"}
@@ -42,12 +43,18 @@ do(State) ->
         undefined ->
             {error, "Provide swagger file using option --file Filename"};
         Path ->
-            try YamlDocs = yamerl_constr:file(Path),
-                rebar_api:info("Generating code from ~p writing to ~p\n", [Path, Dest]),
+            SwaggerMap = 
+                try [YamlDoc] = yamerl_constr:file(Path),
+                     rebar_api:info("Generating code from ~p writing to ~p", [Path, Dest]),
+                     swagger_endpoints:from_yaml(YamlDoc, KVs)
+                catch
+                    _:Reason ->
+                        {error, io_lib:format("Failed to parse ~p (~p)", [Path, Reason])}
+                end,
+            try endpoints:generate(Dest, SwaggerMap, [{src, Source}]),
                 {ok, State}
-            catch
-                _:_ ->
-                    {error, io_lib:format("Failed to parse ~p", [Path])}
+            catch _:Error ->
+                {error, io_lib:format("Failed to generate code ~p (~p)", [Dest, Error])}
             end
     end.
 
