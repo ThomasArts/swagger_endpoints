@@ -2,6 +2,10 @@
 
 -export([init/1, from_yaml/2]).
 
+%% Yaml parser outputs strings (list of characters).
+%% Both jsx and jesse expect eitehr atoms or binaries
+%% This causes additional code to transform these strings to binaries.
+
 -spec init(rebar_state:t()) -> {ok, rebar_state:t()}.
 init(State) ->
   application:ensure_started(yamerl),
@@ -11,8 +15,16 @@ init(State) ->
 from_yaml(Doc, Options) ->
   BaseUri =  proplists:get_value("basePath", Doc, "/"),
   Endpoints = proplists:get_value("paths", Doc, []),
-  Definitions = proplists:get_value("definitions", Doc, []),
-  endpoint_map(Endpoints,  #{}, [{defs, Definitions}, {baseuri, BaseUri} | Options]).
+  Definitions = 
+    build_definitions(proplists:get_value("definitions", Doc, []), [], Options),
+  {Definitions, endpoint_map(Endpoints,  #{}, [{defs, Definitions}, {baseuri, BaseUri} | Options])}.
+
+build_definitions([], Definitions, _Options) ->
+  Definitions;
+build_definitions([{Def, Schema} | Defs], Definitions, Options) ->
+  NewDef = {"/definitions/" ++ Def, to_json_schema(Schema, [{defs, Definitions}|Options])},
+  build_definitions(Defs, [NewDef | Definitions], Options).
+
 
 endpoint_map([], Map, _Options) ->
   Map;
@@ -36,7 +48,7 @@ method_part(Path, EP, Options) ->
 
 mk_operation(Path, Attr, Method, Options) ->
   BaseUri = 
-      iolist_to_binary(string:trim(proplists:get_value(baseuri, Options, "/"), trailing, "/")), 
+    iolist_to_binary(string:trim(proplists:get_value(baseuri, Options, "/"), trailing, "/")), 
   BPath = iolist_to_binary(Path),
   case proplists:get_value("operationId", Attr) of
     undefined ->
@@ -51,6 +63,81 @@ mk_operation(Path, Attr, Method, Options) ->
           string ->
             Id
         end,
-      {IdName, #{method => Method, 
-                 path => <<BaseUri/binary, BPath/binary>> }}
+      Params =  proplists:get_value("parameters", Attr, null),
+      Responses = 
+        maps:from_list([ response(StatusCode, Resp, [{path, Path} | Options])
+                         || {StatusCode, Resp} <- proplists:get_value("responses", Attr, [])]),
+      {IdName, #{Method => #{ 
+                   path => <<BaseUri/binary, BPath/binary>>,
+                   parameters => params_to_json_schema(Params, [{endpoint, IdName} | Options]),
+                   responses  => Responses
+                  }}}
   end.
+
+response(StatusCode, Resp, Options) ->
+  StrictCompilation = proplists:get_value(strict, Options, false),
+  Code = 
+    try {SC, []} = string:to_integer(StatusCode), SC    
+    catch
+      _:_ ->
+        rebar_api:error("Response status code for path ~p cannot be parsed (~p, ~p)", 
+                        [ proplists:get_value(path, Options), StatusCode, Resp])
+    end,
+  case proplists:get_value("schema", Resp) of
+    undefined when StrictCompilation ->
+      rebar_api:warn("Empty response body for path ~p (~p, ~p)", 
+                     [ proplists:get_value(path, Options), StatusCode, Resp]),
+      {Code, undefined};
+    undefined -> {Code, undefined};
+    Yaml    ->
+      Schema = (catch to_json_schema(Yaml, Options)),
+      {Code, Schema}
+  end .
+
+params_to_json_schema([], Options) ->
+  rebar_api:error("~p: use YAML array for parameters not JSON array!", 
+                  [proplists:get_value(endpoint, Options)]),
+  [];
+params_to_json_schema(null, _Options) ->
+  [];
+params_to_json_schema(Params, Options) ->
+  %% According to swagger.io even a parameter may have a "schema:" 
+  [ begin 
+      Schema = proplists:get_value("schema", Param, mk_param_to_schema(Param, Options)),
+      lists:keydelete("schema", 1, Param) ++ [{"schema", to_json_schema(Schema, Options)}]
+    end || Param <- Params ].
+
+mk_param_to_schema(Param, _Options) ->
+  [ {K, V} || {K, V} <- Param, 
+              not lists:member(K, ["required", "example", "description", "name", "in"])].
+
+to_json_schema(Schema, Options) ->
+  %% Turn Yaml into a map with binaries as keys
+  Result = jesse_json_schema(Schema, Options),
+  rebar_api:debug("translating ~p into ~p", [Schema, Result]),
+  Result.
+
+jesse_json_schema(Schema, Options) when is_list(Schema) ->
+  lists:foldl(fun(Item, Acc) -> 
+                  maps:merge(to_json_schema(Item, Options), Acc)
+              end, #{}, Schema);
+jesse_json_schema({"$ref", Reference}, _Options) ->
+  DefRef = string:trim(Reference, leading, "#"),
+  #{<<"$ref">> => list_to_binary(DefRef)};
+jesse_json_schema({Key, Items}, _Options) when Key == "required"; Key == "enum" ->
+  BinKey = list_to_binary(Key),
+  #{BinKey => [ list_to_binary(Item) || Item <- Items ]};
+jesse_json_schema({Key, Value}, _Options) when 
+    is_number(Value); is_boolean(Value); is_binary(Value) ->
+  BinKey = list_to_binary(Key),
+  #{BinKey => Value};
+jesse_json_schema({Key, Value}, Options) when is_list(Value) ->
+  BinKey = list_to_binary(Key),
+  case lists:all(fun(C) -> is_integer(C) andalso C > 0 end, Value) of
+    true ->
+      #{BinKey => list_to_binary(Value)};
+    false ->
+      #{BinKey => jesse_json_schema(Value, Options)}
+  end;
+jesse_json_schema(Schema, _Options) ->
+  #{error => Schema}.
