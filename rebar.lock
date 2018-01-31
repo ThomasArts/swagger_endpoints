@@ -1,5 +1,13 @@
 {"1.1.0",
-[{<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},0},
+[{<<"jesse">>,
+  {git,"https://github.com/for-GET/jesse",
+       {ref,"897d1542079061fc05541aec52f9557dc8b00db3"}},
+  0},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},0},
+ {<<"rfc3339">>,
+  {git,"git://github.com/andreineculau/rfc3339.git",
+       {ref,"dcc77d66430490620677de8140a3415dfbd3fa61"}},
+  1},
  {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.6.0">>},0}]}.
 [
 {pkg_hash,[

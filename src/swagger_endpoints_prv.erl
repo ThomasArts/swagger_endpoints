@@ -19,7 +19,8 @@ init(State) ->
                                           % How to use the plugin
             {opts, [{swaggerfile, $f, "file", string, "filename of swagger.yaml file"},
                     {outfile, $o, "out", string, "filename for generated code (e.g. endpoints.erl)"},
-                    {id_type, $t, "idtype", atom, "type of generated id (atom | binary | string)"}
+                    {id_type, $t, "idtype", atom, "type of generated id (atom | binary | string)"},
+                    {strict, $w, "strict", atom, "Produce extra warnings"}
                    ]},                    % list of options understood by the plugin
             {short_desc, "Generate endpoints code from swagger"},
             {desc, "A rebar plugin to generate code to access swagger defined endpoints"}
@@ -43,15 +44,15 @@ do(State) ->
         undefined ->
             {error, "Provide swagger file using option --file Filename"};
         Path ->
-            SwaggerMap = 
+            {Defs, Endpoints} = 
                 try [YamlDoc] = yamerl_constr:file(Path),
-                     rebar_api:info("Generating code from ~p writing to ~p", [Path, Dest]),
-                     swagger_endpoints:from_yaml(YamlDoc, KVs)
+                    rebar_api:info("Generating code from ~p writing to ~p", [Path, Dest]),
+                    swagger_endpoints:from_yaml(YamlDoc, KVs)
                 catch
                     _:Reason ->
                         {error, io_lib:format("Failed to parse ~p (~p)", [Path, Reason])}
                 end,
-            try endpoints:generate(Dest, SwaggerMap, [{src, Source}]),
+            try swagger_generate:erlang(Dest, Endpoints, Defs, [{src, Source}]),
                 {ok, State}
             catch _:Error ->
                 {error, io_lib:format("Failed to generate code ~p (~p)", [Dest, Error])}
@@ -65,3 +66,4 @@ format_error(Reason) ->
 get_from_state(Key, State, Default) ->
     KVs = rebar_state:get(State, swagger_endpoints, []),
     proplists:get_value(Key, KVs, Default).
+
