@@ -44,7 +44,6 @@ template_code() ->
                                      proplists:get_value(Name, Args)} of
                                  {false, undefined} -> Path;
                                  {true, undefined}  ->
-                                   io:format(user, "path creation failed ~p ~p\n", [OperationId, Name]),
                                    throw({error, {required, Name, Param, OperationId}});
                                  {_, Value} ->
                                    string:replace(Path, "{"++Name++"}", lists:concat([Value]))
@@ -57,7 +56,6 @@ template_code() ->
                  [ case jesse:add_schema(Def, Schema) of
                      ok -> ok;
                      Other ->
-                       io:format(user, "error adding schema ~p -> ~p\n", [Def, Schema]),
                        Other
                    end || {Def, Schema} <- definitions() ];
                _ -> []
@@ -66,7 +64,6 @@ template_code() ->
              try jesse_schema_validator:validate(Schema, Term, [])
              catch
                throw:Error ->
-                 io:format(user, "Error validation ~p\n", [Error]),
                  {error, Error}
              end.),
    ?QUOTE(validate_request(OperationId, Method, Args) when is_map(Args) ->
@@ -104,14 +101,12 @@ template_code() ->
                  undefined ->
                    {ok, StatusCode, Response};
                  Schema ->
-                   io:format(user, "response validating ~p against ~p\n", [Response, Schema]),
                    case validate(Schema, Response) of
                      {ok, _} ->
                        {ok, StatusCode, Response};
                      {error, E} ->
                        {error, {validation, E}};
                      Other ->
-                       io:format(user, "error schema validation: ~p\n", [Other]),
                        throw(Other)
                    end
                end
