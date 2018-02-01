@@ -105,9 +105,7 @@ template_code() ->
                      {ok, _} ->
                        {ok, StatusCode, Response};
                      {error, E} ->
-                       {error, {validation, E}};
-                     Other ->
-                       throw(Other)
+                       {error, {validation, E}}
                    end
                end
              end.)
