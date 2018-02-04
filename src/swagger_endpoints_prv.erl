@@ -37,9 +37,7 @@ do(State) ->
            undefined -> undefined;
            _ -> filename:basename(Source, [".yaml"]) ++ "_endpoints"
       end,
-    Dest =  filename:rootname(
-              proplists:get_value(outfile, KVs, get_from_state(dst, State, DefaultDest)), 
-              ".erl") ++ ".erl",
+    Dest = proplists:get_value(outfile, KVs, get_from_state(dst, State, DefaultDest)),
     case Source of
         undefined ->
             {error, "Provide swagger file using option --file Filename"};
@@ -52,11 +50,24 @@ do(State) ->
                     _:Reason ->
                         {error, io_lib:format("Failed to parse ~p (~p)", [Path, Reason])}
                 end,
-            try swagger_generate:erlang(Dest, Endpoints, Defs, [{src, Source}]),
+            try generate(Dest, Endpoints, Defs, [{src, Source}]),
                 {ok, State}
-            catch _:Error ->
-                {error, io_lib:format("Failed to generate code ~p (~p)", [Dest, Error])}
+            catch  
+                _:Error ->
+                    {error, io_lib:format("Failed to generate code ~p (~p)", [Dest, Error])}
             end
+    end.
+
+generate(Dest, Endpoints, Definitions, Options) ->
+    case filename:extension(Dest) of
+      ".erl" ->
+        swagger_generate:erlang(Dest, Endpoints, Definitions, Options);
+      ".json" ->
+        swagger_generate:json_schema(Dest, Endpoints, Definitions, Options);
+      [] ->
+        swagger_generate:erlang(Dest ++ ".erl", Endpoints, Definitions, Options);
+      Ext ->
+        throw({extension, Ext, not_allowed})
     end.
 
 -spec format_error(any()) ->  iolist().

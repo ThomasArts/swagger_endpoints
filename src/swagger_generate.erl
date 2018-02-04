@@ -1,8 +1,18 @@
 -module(swagger_generate).
 
--export([erlang/4]).
+-export([erlang/4, json_schema/4]).
 -include_lib("syntax_tools/include/merl.hrl").
 -define(QUOTE(X), ?Q(??X)).
+
+json_schema(FileName, _Map, Definitions, Options) ->
+  Schema = 
+    maps:merge(#{<<"$schema">> => 
+                   <<"http://json-schema.org/draft-04/schema#">>}, 
+               #{<<"properties">> => 
+                   maps:from_list([{list_to_binary(K), V} 
+                                   || {K,V} <- Definitions])}),
+  Binary = jsx:prettify(jsx:encode(Schema)),
+  ok = file:write_file(FileName, Binary).
 
 erlang(FileName, Map, Definitions, Options) ->
   Mod = filename:basename(FileName, ".erl"),
