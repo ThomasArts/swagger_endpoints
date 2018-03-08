@@ -50,29 +50,48 @@ mk_operation(Path, Attr, Method, Options) ->
   BaseUri = 
     iolist_to_binary(string:trim(proplists:get_value(baseuri, Options, "/"), trailing, "/")), 
   BPath = iolist_to_binary(Path),
-  case proplists:get_value("operationId", Attr) of
+  IdName = get_value("operationId", proplists:get_value(id_type, Options, atom), Attr, Path),
+  Tags = get_value("tags", {list, binary}, Attr, Path),
+  Params = get_value("parameters", {list, string}, Attr, Path, null),
+  ReadResponse =
+    fun({StatusCode, Resp}) ->
+      response(StatusCode, Resp, [{path, Path} | Options])
+    end,
+  Responses =
+    maps:from_list(get_value("responses", {list, ReadResponse}, Attr, Path, [])),
+  {IdName, #{Method => #{ 
+                path => <<BaseUri/binary, BPath/binary>>,
+                tags => Tags,
+                parameters => params_to_json_schema(Params, [{endpoint, IdName} | Options]),
+                responses  => Responses
+              }}}.
+
+get_value(Name, Type, Attr, Path) ->
+  get_value(Name, Type, Attr, Path, undefined).
+
+get_value(Name, Type, Attr, Path, Default) ->
+  case proplists:get_value(Name, Attr, Default) of
     undefined ->
-      throw({error, "no operationId provided", Path});
-    Id ->
-      IdName = 
-        case proplists:get_value(id_type, Options, atom) of
-          atom ->
-            list_to_atom(Id);
-          binary ->
-            iolist_to_binary(Id);
-          string ->
-            Id
+      throw({error, "no " ++ Name ++ " provided", Path});
+    %% if a key is present but has no elements in it - the value is null
+    null when element(1, Type) =:= list ->
+      Default;
+    Val ->
+      Parse =
+        fun(T, V) ->
+          case T of
+            atom -> list_to_atom(V);
+            binary -> iolist_to_binary(V);
+            string -> V;
+            F when is_function(F, 1) -> F(V)
+          end
         end,
-      Params =  proplists:get_value("parameters", Attr, null),
-      Responses = 
-        maps:from_list([ response(StatusCode, Resp, [{path, Path} | Options])
-                         || {StatusCode, Resp} <- proplists:get_value("responses", Attr, [])]),
-      {IdName, #{Method => #{ 
-                   path => <<BaseUri/binary, BPath/binary>>,
-                   parameters => params_to_json_schema(Params, [{endpoint, IdName} | Options]),
-                   responses  => Responses
-                  }}}
-  end.
+      case Type of
+        {list, ElType} ->
+          lists:map(fun(Element) -> Parse(ElType, Element) end, Val);
+          _ -> Parse(Type, Val)
+      end
+   end.
 
 response(StatusCode, Resp, Options) ->
   StrictCompilation = proplists:get_value(strict, Options, false),
