@@ -38,19 +38,27 @@ mk_operation(Path, Attr, Method, Options) ->
   BaseUri = 
       iolist_to_binary(string:trim(proplists:get_value(baseuri, Options, "/"), trailing, "/")), 
   BPath = iolist_to_binary(Path),
-  case proplists:get_value("operationId", Attr) of
+  IdName = get_value("operationId", proplists:get_value(id_type, Options, atom), Attr, Path),
+  Tags = get_value("tags", {list, binary}, Attr, Path),
+  {IdName, #{method => Method, 
+             tags => Tags,
+             path => <<BaseUri/binary, BPath/binary>> }}.
+
+get_value(Name, Type, Attr, Path) ->
+
+  case proplists:get_value(Name, Attr) of
     undefined ->
-      throw({error, "no operationId provided", Path});
-    Id ->
-      IdName = 
-        case proplists:get_value(id_type, Options, atom) of
-          atom ->
-            list_to_atom(Id);
-          binary ->
-            iolist_to_binary(Id);
-          string ->
-            Id
-        end,
-      {IdName, #{method => Method, 
-                 path => <<BaseUri/binary, BPath/binary>> }}
+      throw({error, "no " ++ Name ++ " provided", Path});
+    Val ->
+      case Type of
+        atom ->
+          list_to_atom(Val);
+        binary ->
+          iolist_to_binary(Val);
+        string ->
+          Val;
+        {list, binary} when is_list(Val) ->
+          lists:map(fun iolist_to_binary/1, Val)
+      end
   end.
+
