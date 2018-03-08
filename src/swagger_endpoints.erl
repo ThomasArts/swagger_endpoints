@@ -51,7 +51,7 @@ mk_operation(Path, Attr, Method, Options) ->
     iolist_to_binary(string:trim(proplists:get_value(baseuri, Options, "/"), trailing, "/")), 
   BPath = iolist_to_binary(Path),
   IdName = get_value("operationId", proplists:get_value(id_type, Options, atom), Attr, Path),
-  Tags = get_value("tags", {list, binary}, Attr, Path),
+  Tags = get_value("tags", {list, binary}, Attr, Path, []),
   Params = get_value("parameters", {list, string}, Attr, Path, null),
   ReadResponse =
     fun({StatusCode, Resp}) ->
