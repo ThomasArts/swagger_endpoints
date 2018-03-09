@@ -7,9 +7,10 @@
 erlang(FileName, Map, Definitions, Options) ->
   Mod = filename:basename(FileName, ".erl"),
   Body = io_lib:format("~p", [Map]),
+  {ok, Version} = application:get_key(swagger_endpoints, vsn),
   Code =
     ["%% This code is generated from ", proplists:get_value(src, Options), "\n",
-     "%% Using rebar3 swagger_endpoints\n"
+     "%% Using swagger_endpoints rebar3 plugin version: " ++ Version ++ "\n"
      "%% Do not manually change this code!\n"
      "%%\n"
      "%% json_schema/0 implements a JSON Schema for the definitions\n"
