@@ -4,7 +4,7 @@
 -include_lib("syntax_tools/include/merl.hrl").
 -define(QUOTE(X), ?Q(??X)).
 
-json_schema(FileName, _Map, Definitions, Options) ->
+json_schema(FileName, _Map, Definitions, _Options) ->
   Schema = 
     maps:merge(#{<<"$schema">> => 
                    <<"http://json-schema.org/draft-04/schema#">>}, 
@@ -28,7 +28,8 @@ erlang(FileName, Map, Definitions, Options) ->
      "%% Use jsx:prettify(jsx:encode(json_schema())) to get a JSON string.\n\n",
      "-module("++Mod++").\n\n"
      "-export([operation/1, operations/0, definitions/0, json_schema/0,\n"
-     "         validate_request/3, validate_response/4, path/3, validate/2]).\n\n"
+     "         validate_request/3, validate_response/4, path/3, query/3,\n"
+     "         validate/2]).\n\n"
      "operations() ->\n    ", Body, ".\n\n"
      "definitions() ->\n    ", io_lib:format("~p",[Definitions]), ".\n\n"] ++
      [erl_prettypr:format(erl_syntax:form_list(template_code()))],
@@ -52,14 +53,37 @@ template_code() ->
                lists:foldl(fun(Param, Path) -> 
                                Name = proplists:get_value("name", Param),
                                case {proplists:get_value("required", Param, false),
-                                     proplists:get_value(Name, Args)} of
+                                     get_by_similar_key(Name, Args)} of
                                  {false, undefined} -> Path;
                                  {true, undefined}  ->
                                    throw({error, {required, Name, Param, OperationId}});
-                                 {_, Value} ->
-                                   string:replace(Path, "{"++Name++"}", lists:concat([Value]))
+                                 {_, {_Key, Value}} ->
+                                    iolist_to_binary(string:replace(Path, "{"++Name++"}", to_str(Value)))
                                end
                            end, Endpoint, InPath)
+             end.),
+   ?QUOTE(query(Method, OperationId, Args) when is_map(Args) ->
+             query(Method, OperationId, maps:to_list(Args));
+          query(Method, OperationId, Args) ->
+             begin
+               #{parameters := Parameters} = maps:get(Method, operation(OperationId)),
+               InQuery = [ Param || Param <- Parameters, lists:member({"in", "query"}, Param) ],
+               Query = 
+                 lists:foldr(fun(Param, Query) -> 
+                                 Name = proplists:get_value("name", Param),
+                                 case {proplists:get_value("required", Param, false),
+                                       get_by_similar_key(Name, Args)} of
+                                   {false, undefined} -> Query;
+                                   {true, undefined} ->
+                                     throw({error, {required, Name, Param, OperationId}});
+                                   {_, {_, Value}} ->
+                                     [{Name, http_uri:encode(to_str(Value))} | Query]
+                                 end
+                             end, [], InQuery),
+               case [[K, "=", V] || {K, V} <- Query] of
+                 [] -> <<>>;
+                 Qs -> iolist_to_binary(["?" | lists:join("&", Qs)])
+               end
              end.),
    ?QUOTE(prepare_validation() ->
              case ets:info(jesse_ets) of
@@ -87,11 +111,11 @@ template_code() ->
                Errors = lists:foldl(fun(Param, Errs) -> 
                                         Name = proplists:get_value("name", Param),
                                         case {proplists:get_value("required", Param, false),
-                                              proplists:get_value(Name, Args)} of
+                                              get_by_similar_key(Name, Args)} of
                                           {false, undefined} -> Errs;
                                           {true, undefined}  ->
                                             [{required, Name, Param, OperationId}|Errs];
-                                          {_, Value} ->
+                                          {_, {_, Value}} ->
                                             case validate(proplists:get_value("schema", Param, #{}), Value) of
                                               {error, E} -> [E|Errs];
                                               _ -> Errs
@@ -118,6 +142,25 @@ template_code() ->
                      {error, E} ->
                        {error, {validation, E}}
                    end
+               end
+             end.),
+   ?QUOTE(get_by_similar_key(Name, KVs) when is_list(Name) ->
+             case lists:keyfind(Name, 1, KVs) of
+               false ->
+                 case lists:keyfind(list_to_binary(Name), 1, KVs) of
+                   false ->
+                     case lists:keyfind((catch list_to_existing_atom(Name)), 1, KVs) of
+                       false -> undefined;
+                       AtomTuple -> AtomTuple
+                     end;
+                   BinTuple -> BinTuple
+                 end;
+               Tuple -> Tuple
+             end.),
+   ?QUOTE(to_str(Str) ->
+             begin
+               if is_list(Str); is_binary(Str) -> Str;
+                  true ->  lists:concat([Str])
                end
              end.)
   ].
